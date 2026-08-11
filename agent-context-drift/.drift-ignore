@@ -1,0 +1,15 @@
+# Findings agent-drift should stay quiet about.
+#
+#   value            mute this finding everywhere
+#   file::value      mute it in one instruction file only
+#   skip: <glob>     do not check a whole instruction file
+#
+# Glob patterns work. Only put DELIBERATE things here: examples, historical
+# mentions, external addresses. If you are tempted to mute a genuine breakage,
+# fix the instructions instead.
+#
+# Health check: if this file keeps growing while accuracy stays flat, the
+# filters are wrong — fix the detector, not this list.
+
+# The fixture repo is meant to contain broken paths.
+skip: tests/fixtures/**

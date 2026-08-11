@@ -1,0 +1,12 @@
+# Findings agent-drift should stay quiet about in this repository.
+#
+#   value            mute everywhere
+#   file::value      mute in one instruction file
+#   skip: <glob>     skip a whole instruction file
+#
+# Only DELIBERATE things belong here. If you are tempted to mute a genuine
+# breakage, fix the instructions instead. And if this file grows while accuracy
+# stays flat, the filters are wrong — fix the detector, not this list.
+
+# The fixture repo contains broken paths on purpose.
+skip: agent-context-drift/tests/fixtures/**

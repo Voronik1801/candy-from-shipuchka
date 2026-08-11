@@ -1,0 +1,26 @@
+name: agent-context-drift
+
+on:
+  push:
+    paths: ["agent-context-drift/**", ".github/workflows/agent-context-drift.yml"]
+  pull_request:
+    paths: ["agent-context-drift/**"]
+
+defaults:
+  run:
+    working-directory: agent-context-drift
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m unittest discover tests -v
+      - name: Dogfood — check this tool's own instructions
+        run: python agent_drift.py --explain --fail-over 40

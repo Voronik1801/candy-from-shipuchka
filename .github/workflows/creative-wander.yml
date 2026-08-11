@@ -1,0 +1,24 @@
+name: creative-wander
+
+on:
+  push:
+    paths: ["creative-wander/**", ".github/workflows/creative-wander.yml"]
+  pull_request:
+    paths: ["creative-wander/**"]
+
+defaults:
+  run:
+    working-directory: creative-wander
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: python -m py_compile wander.py exa.py
+      - name: Pull fragments out of this very repository
+        run: python wander.py 3 20 --seed 1 --root ..
