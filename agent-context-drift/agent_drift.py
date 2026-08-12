@@ -437,6 +437,91 @@ def undocumented_dirs(base: Path, nested: list[Path], text: str,
     return out, considered
 
 
+# Files that belong in a repository root by convention. Not clutter.
+ROOT_STAPLES = {
+    "readme.md", "readme.ru.md", "license", "license.md", "licence",
+    "claude.md", "agents.md", "gemini.md", "contributing.md", "changelog.md",
+    "code_of_conduct.md", "security.md", "makefile", "dockerfile",
+    "pyproject.toml", "package.json", "cargo.toml", "go.mod", "setup.py",
+    "requirements.txt", "pytest.ini", "tox.ini", "mkdocs.yml", "index.html",
+}
+DOC_EXT = {".md", ".rst", ".txt", ".adoc"}
+ASSET_EXT = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".pdf", ".zip", ".mov", ".mp4"}
+CODE_EXT = {".py", ".sh", ".js", ".ts", ".rb", ".go", ".rs", ".sql"}
+# "file 2.md" — what iCloud/Dropbox leave behind after a sync conflict
+SYNC_DUP_RE = re.compile(r"^(?P<stem>.+) (?P<n>\d+)(?P<ext>\.[^.]+)$")
+
+
+def classify_loose(p: Path) -> str:
+    """What kind of stray file this is, so the report can suggest an action."""
+    ext = p.suffix.lower()
+    if ext in DOC_EXT:
+        return "doc"        # → document it in the tree, or move it to docs/
+    if ext in ASSET_EXT:
+        return "asset"      # → assets/
+    if ext in CODE_EXT:
+        return "code"       # → scripts/ or src/
+    return "unknown"
+
+
+def loose_files(base: Path, text: str, gitignore: list[str], rules, owner_rel: str):
+    """Files scattered in the root of a documented folder.
+
+    Depth 0 on purpose: inside `output/` or `notes/` files are *supposed* to pile
+    up, that is the job of those folders. The root is where a file lands when
+    nobody decided where it belongs.
+    """
+    out = []
+    for p in sorted(base.glob("*")):
+        if not p.is_file() or p.name.startswith("."):
+            continue
+        if p.name.lower() in ROOT_STAPLES or p.name in text:
+            continue
+        if any(fnmatch.fnmatch(p.name, g) for g in gitignore):
+            continue
+        if ignored(rules, owner_rel, p.name):
+            continue
+        m = SYNC_DUP_RE.match(p.name)
+        if m:
+            twin = base / (m.group("stem") + m.group("ext"))
+            if twin.exists() and twin.stat().st_size == p.stat().st_size:
+                out.append({"kind": "loose_file", "value": p.name,
+                            "bucket": "sync_duplicate", "reason": "copy of " + twin.name})
+                continue
+        out.append({"kind": "loose_file", "value": p.name,
+                    "bucket": classify_loose(p), "reason": ""})
+    return out
+
+
+def duplicate_docs(base: Path, text: str):
+    """Documents next door that duplicate the instruction file's job."""
+    out = []
+    for p in sorted(base.glob("*.md")):
+        if p.name in text or p.name.lower() in {"readme.md", "claude.md", "agents.md"}:
+            continue
+        if re.match(r"^(STRUCTURE|NOTES|AUDIT|REVIEW|ARCHITECTURE|LAYOUT)", p.name, re.I):
+            out.append(p.name)
+    return out
+
+
+def missing_skills(text: str, root: Path):
+    """Skills the instructions point at that do not exist.
+
+    Rename a skill and the instruction silently sends the agent nowhere. Only
+    explicit `/name` mentions inside backticks count: a loose search for
+    "/word" picks up commit types and model names and drowns the report.
+    """
+    names = set(re.findall(r"`/([a-z][a-z0-9:-]{2,40})`", text))
+    homes = [root / ".claude" / "skills", Path.home() / ".claude" / "skills",
+             root / ".cursor" / "rules"]
+    builtin = {"loop", "schedule", "init", "help", "config", "clear", "run",
+               "compact", "review", "test", "build", "deploy"}
+    return [n for n in sorted(names)
+            if ":" not in n and n not in builtin
+            and not any((h / n / "SKILL.md").exists() or (h / f"{n}.md").exists()
+                        for h in homes)]
+
+
 def staleness(owner: Path, base: Path, nested: list[Path]):
     """Not "the file is old" but "the project moved on and the docs did not".
 
@@ -468,6 +553,9 @@ def score(counts, undoc, sig_dirs, lag, churn):
     def rate(a, b):
         return a / b if b else 0.0
 
+    counts = {"verified": 0, "broken": 0, "ambiguous": 0, "templates": 0,
+              "template_unused": 0, "skills_missing": 0, "skills_mentioned": 0,
+              "loose": 0, "sync_duplicates": 0, "duplicate_docs": 0, **counts}
     verified = counts["verified"]
     # Broken paths count both as a share and in absolute terms: six dead
     # addresses are bad on their own, even in a file with fifty live ones.
@@ -477,9 +565,15 @@ def score(counts, undoc, sig_dirs, lag, churn):
     tmpl_rate = rate(counts["template_unused"], max(counts["templates"], 1))
     ambig_rate = rate(counts["ambiguous"], verified)
     stale = min(lag / 60, 1.0) * max(min(churn / 20, 1.0), 0.25) if churn else 0.0
+    skill_rate = rate(counts["skills_missing"], max(counts["skills_mentioned"], 1))
+    # Sync duplicates are pure garbage and count fully; other stray files are a
+    # milder smell, so a handful of them cannot dominate the score.
+    clutter = min((counts["sync_duplicates"] + 0.5 * (counts["loose"]
+                   - counts["sync_duplicates"]) + counts["duplicate_docs"]) / 8, 1.0)
 
-    drift = 100 * (0.40 * broken_rate + 0.25 * undoc_rate + 0.18 * stale
-                   + 0.12 * tmpl_rate + 0.05 * ambig_rate)
+    drift = 100 * (0.34 * broken_rate + 0.21 * undoc_rate + 0.15 * stale
+                   + 0.10 * tmpl_rate + 0.10 * skill_rate + 0.06 * clutter
+                   + 0.04 * ambig_rate)
     if churn == 0:
         drift *= 0.5                      # frozen project stays quiet
     drift = round(min(drift, 100), 1)
@@ -501,7 +595,9 @@ def analyze(owner: Path, owners: list[Path], root: Path, fs_index: dict,
     findings: list[dict] = []
     counts = {"candidates": 0, "verified": 0, "ok": 0, "broken": 0, "ambiguous": 0,
               "templates": 0, "template_unused": 0, "descriptive": 0,
-              "external": 0, "not_a_path": 0, "ignored": 0}
+              "external": 0, "not_a_path": 0, "ignored": 0,
+              "loose": 0, "sync_duplicates": 0, "duplicate_docs": 0,
+              "skills_mentioned": 0, "skills_missing": 0}
 
     seen = set()
     for raw, lineno, zone in extract_candidates(text):
@@ -548,11 +644,28 @@ def analyze(owner: Path, owners: list[Path], root: Path, fs_index: dict,
 
     undoc, sig_dirs = undocumented_dirs(base, nested, text, gitignore, rules, owner_rel)
     findings.extend(undoc)
+
+    loose = loose_files(base, text, gitignore, rules, owner_rel)
+    findings.extend(loose)
+
+    dups = duplicate_docs(base, text)
+    findings.extend({"kind": "duplicate_doc", "value": d} for d in dups)
+
+    mentioned = set(re.findall(r"`/([a-z][a-z0-9:-]{2,40})`", text))
+    miss = missing_skills(text, root)
+    findings.extend({"kind": "missing_skill", "value": "/" + m} for m in miss)
+
     lag, churn = staleness(owner, base, nested)
-    drift, status = score(counts, undoc, max(sig_dirs, 1), lag, churn)
 
     counts["undocumented"] = len(undoc)
     counts["dirs_considered"] = sig_dirs
+    counts["loose"] = len(loose)
+    counts["sync_duplicates"] = sum(1 for f in loose if f["bucket"] == "sync_duplicate")
+    counts["duplicate_docs"] = len(dups)
+    counts["skills_mentioned"] = len(mentioned)
+    counts["skills_missing"] = len(miss)
+
+    drift, status = score(counts, undoc, max(sig_dirs, 1), lag, churn)
     return {
         "path": owner_rel, "drift": drift, "status": status,
         "mtime": datetime.fromtimestamp(owner.stat().st_mtime).strftime("%Y-%m-%d"),
@@ -563,6 +676,9 @@ def analyze(owner: Path, owners: list[Path], root: Path, fs_index: dict,
 # ── renderers ────────────────────────────────────────────────────────────────
 
 LABELS = [("broken_path", "BROKEN"), ("undocumented_dir", "undocumented"),
+          ("missing_skill", "no such skill"),
+          ("loose_file", "loose in the root"),
+          ("duplicate_doc", "duplicates the instruction file"),
           ("template_unused", "template matches nothing"),
           ("ambiguous_ref", "ambiguous"),
           ("external_ref", "outside this repo (unverifiable)")]
@@ -583,7 +699,8 @@ def render_explain(reports, skipped, root):
             print(f"    {label}:")
             for f in items[:12]:
                 loc = f"line {f['line']:>4}" if "line" in f else "         "
-                extra = f"   [{f['reason']}]" if f.get("reason") else ""
+                tail = f.get("reason") or f.get("bucket") or ""
+                extra = f"   [{tail}]" if tail else ""
                 print(f"      {loc}  {f['value']}{extra}")
             if len(items) > 12:
                 print(f"      ... {len(items) - 12} more")

@@ -8,10 +8,10 @@ tree. One module, standard library only, no LLM calls.
 ```
 agent-context-drift/
 ├── agent_drift.py     ← the whole detector: zones → filters → resolution → score
+├── SKILL.md           ← the agent-facing form; copy into .claude/skills/agent-drift/
 ├── tests/
 │   ├── test_drift.py  ← behaviour pins, one per historical false positive
 │   └── fixtures/      ← a toy repo; its AGENTS.md is broken on purpose
-├── skills/            ← Claude Code wrapper
 └── .drift-ignore      ← deliberate mutes, committed
 ```
 

@@ -4,6 +4,9 @@ A monorepo of small, independent tools. Each lives in its own directory with
 its own README, tests and entry point; there is no shared runtime and no
 cross-imports between them.
 
+> **Уровень ставки: T2** (см. «Ручка доверия» в CLAUDE.md родительского POS) —
+> публичный репозиторий, всё написанное здесь читают посторонние.
+
 ## Layout
 
 ```
