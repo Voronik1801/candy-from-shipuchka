@@ -18,7 +18,8 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "tests" / "fixtures" / "sample"
 sys.path.insert(0, str(ROOT))
 
-import agent_drift  # noqa: E402
+import agent_drift
+import claim_drift  # noqa: E402
 
 
 def run_fixture():
@@ -125,6 +126,60 @@ class UnitPieces(unittest.TestCase):
                "templates": 1, "template_unused": 0}
         drift, _ = agent_drift.score(big, [], 1, lag=0, churn=5)
         self.assertGreater(drift, 30)
+
+
+class ClaimDrift(unittest.TestCase):
+    """Claims rot without an address, so they need their own markup."""
+
+    def _check(self, text, rel="CLAUDE.md", resolve=lambda v, b, r: "ok", **kw):
+        owner = FIXTURE / rel
+        return claim_drift.check(owner, text, FIXTURE, FIXTURE, resolve=resolve,
+                                 owner_rel=rel, ignored=lambda a, b: False, **kw)
+
+    def test_source_pointing_nowhere_is_a_finding(self):
+        f, _ = self._check("Median reach 950 [source: gone/]",
+                           resolve=lambda v, b, r: "broken")
+        self.assertEqual([x["kind"] for x in f], ["broken_source"])
+
+    def test_a_live_source_silences_the_number(self):
+        """A marked claim must not also be reported as unmarked."""
+        f, c = self._check("Median reach 950 [source: tools/]")
+        self.assertEqual(f, [])
+        self.assertEqual(c["claims_unmarked"], 0)
+
+    def test_russian_alias_is_accepted(self):
+        _, c = self._check("Медиана 950 [источник: tools/]")
+        self.assertEqual(c["sources"], 1)
+
+    def test_bare_measurement_is_flagged_but_a_count_is_not(self):
+        f, _ = self._check("Reach was 33 873 last month.")
+        self.assertEqual([x["kind"] for x in f], ["unmarked_claim"])
+        self.assertEqual(self._check("The deck has 8 slides.")[0], [])
+
+    def test_drafts_and_T0_are_left_alone(self):
+        """A draft is where you are allowed to be wrong out loud."""
+        _, c = self._check("Stake level: T0\n\nReach was 33 873.")
+        self.assertEqual(c["claims_unmarked"], 0)
+
+    def test_code_fences_and_tables_are_not_claims(self):
+        self.assertEqual(self._check("```\nreach = 33 873\n```")[0], [])
+        self.assertEqual(self._check("| reach | 33 873 |")[0], [])
+
+    def test_stake_level_example_in_prose_is_not_a_declaration(self):
+        """The root file documents the syntax; that must not declare it T2."""
+        body = "\n".join(["filler"] * 25 + ["Write `Stake level: T2` in the header."])
+        self.assertIsNone(claim_drift._declared(body))
+        self.assertEqual(claim_drift._declared("# Title\n> Stake level: T2\n"), "T2")
+
+    def test_stale_unknown_needs_git_dates_and_stays_quiet_without_them(self):
+        f, c = self._check("Goodhart was British statistics [?]")
+        self.assertEqual(c["unknowns"], 1)
+        self.assertEqual([x for x in f if x["kind"] == "stale_unknown"], [])
+
+    def test_rate_is_a_share_so_detail_is_not_punished(self):
+        few = claim_drift.rate({"claims_marked": 1, "claims_unmarked": 1})
+        many = claim_drift.rate({"claims_marked": 50, "claims_unmarked": 50})
+        self.assertEqual(few, many)
 
 
 if __name__ == "__main__":

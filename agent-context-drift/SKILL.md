@@ -37,6 +37,14 @@ numbers; open them surgically afterwards. The scan takes about three seconds.
 | `template_unused` | rule written, nothing follows it | soft |
 | `ambiguous_ref` | exists, but not where stated | **no** — just untidy |
 | `external_ref` | outside the repo, unverifiable | no |
+| `broken_source` | `[source: …]` points at nothing | **yes** — same class as a dead path |
+| `stale_unknown` | a `[?]` left open over 30 days | yes — a doubt written down and forgotten |
+| `no_stake_level` | project never declared its stake level | yes, one line fixes it |
+| `unmarked_claim` | measured number, no marker | soft, and the noisiest category |
+
+On claims: never propose marking up every number in the repo. Surface only the
+ones that feed a decision or leave the building. Blanket markup is the
+imitation of rigour the check exists to catch.
 
 ---
 

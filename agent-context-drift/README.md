@@ -84,10 +84,43 @@ instead of silently misleading every agent that reads them afterwards.
 | `template_unused` | a rule is written (`notes/YYYY-MM-DD_slug.md`) but nothing follows it |
 | `ambiguous_ref` | it exists, just not where the file says. Not an error, only untidy |
 | staleness | not "the file is old" but "the project moved on and the docs did not" |
+| `broken_source` | a `[source: …]` marker pointing at nothing |
+| `stale_unknown` | a `[?]` left open longer than 30 days |
+| `unmarked_claim` | a measured number carrying no marker at all |
+| `no_stake_level` | a project that never declared how much its claims matter |
 
 The drift score is a **ratio of what rotted**, not a count of errors — 40 paths
 and 7 paths are not comparable. Bands: `<20` fresh · `20–39` drifting ·
 `40–59` stale · `≥60` broken.
+
+## Claims rot too
+
+A path can be checked against the filesystem. A sentence like *"median reach is
+950"* cannot — it has no address, so it goes stale in silence while the agent
+keeps building on it. Opt in by marking claims:
+
+```markdown
+Median reach is 950 [source: tools/analytics/]
+Goodhart's law came out of British statistics [?]
+```
+
+`[source: …]` is resolved by the same path rules as everything else, so a
+renamed folder surfaces it. `[?]` is an honest *I did not check this* — the
+detector reports one only once it has been sitting there for over 30 days.
+
+How strict a file is depends on its **stake level**, declared in the header:
+
+```markdown
+> Stake level: T2
+```
+
+`T0` drafts (claims not checked at all) · `T1` working documents (the default)
+· `T2` anything leaving the building. Folders that are raw material by
+nature — `drafts/`, `ideas/`, `capture/`, `archive/` — are always T0.
+
+`unmarked_claim` is the noisiest signal here and it is meant as a prompt, not a
+mandate: marking up every number in the repository would be exactly the
+imitation of rigour this is supposed to expose.
 
 ## Why the false positives are the whole story
 

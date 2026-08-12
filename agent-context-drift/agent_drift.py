@@ -35,6 +35,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+import claim_drift  # noqa: E402  — claims rot too, not just paths
+
 __version__ = "0.1.0"
 
 # Instruction files understood out of the box. Override with --name.
@@ -548,7 +551,7 @@ def staleness(owner: Path, base: Path, nested: list[Path]):
     return (round((newest - mtime) / 86400, 1) if newest else 0.0), churn
 
 
-def score(counts, undoc, sig_dirs, lag, churn):
+def score(counts, undoc, sig_dirs, lag, churn, claim_rate=0.0):
     """A ratio of what rotted, not a sum of errors: 40 paths and 7 aren't comparable."""
     def rate(a, b):
         return a / b if b else 0.0
@@ -571,9 +574,11 @@ def score(counts, undoc, sig_dirs, lag, churn):
     clutter = min((counts["sync_duplicates"] + 0.5 * (counts["loose"]
                    - counts["sync_duplicates"]) + counts["duplicate_docs"]) / 8, 1.0)
 
-    drift = 100 * (0.34 * broken_rate + 0.21 * undoc_rate + 0.15 * stale
-                   + 0.10 * tmpl_rate + 0.10 * skill_rate + 0.06 * clutter
-                   + 0.04 * ambig_rate)
+    # Claim drift weighs less than a dead path but more than clutter: a number
+    # nobody can check is worse than an unfiled file sitting next to it.
+    drift = 100 * (0.34 * broken_rate + 0.16 * undoc_rate + 0.13 * stale
+                   + 0.12 * claim_rate + 0.08 * tmpl_rate + 0.09 * skill_rate
+                   + 0.04 * clutter + 0.04 * ambig_rate)
     if churn == 0:
         drift *= 0.5                      # frozen project stays quiet
     drift = round(min(drift, 100), 1)
@@ -665,7 +670,17 @@ def analyze(owner: Path, owners: list[Path], root: Path, fs_index: dict,
     counts["skills_mentioned"] = len(mentioned)
     counts["skills_missing"] = len(miss)
 
-    drift, status = score(counts, undoc, max(sig_dirs, 1), lag, churn)
+    claims, claim_counts = claim_drift.check(
+        owner, text, base, root,
+        resolve=lambda v, b, r: resolve(v, b, r, fs_index)[0],
+        owner_rel=owner_rel,
+        ignored=lambda rel, val: ignored(rules, rel, val),
+        owner_names=tuple(DEFAULT_NAMES))
+    findings.extend(claims)
+    counts.update(claim_counts)
+
+    drift, status = score(counts, undoc, max(sig_dirs, 1), lag, churn,
+                          claim_drift.rate(claim_counts))
     return {
         "path": owner_rel, "drift": drift, "status": status,
         "mtime": datetime.fromtimestamp(owner.stat().st_mtime).strftime("%Y-%m-%d"),
@@ -675,7 +690,10 @@ def analyze(owner: Path, owners: list[Path], root: Path, fs_index: dict,
 
 # ── renderers ────────────────────────────────────────────────────────────────
 
-LABELS = [("broken_path", "BROKEN"), ("undocumented_dir", "undocumented"),
+LABELS = [("broken_path", "BROKEN"), ("broken_source", "SOURCE NOT FOUND"),
+          ("stale_unknown", "`[?]` gone stale"),
+          ("no_stake_level", "no stake level declared"),
+          ("unmarked_claim", "number with no marker"), ("undocumented_dir", "undocumented"),
           ("missing_skill", "no such skill"),
           ("loose_file", "loose in the root"),
           ("duplicate_doc", "duplicates the instruction file"),
@@ -692,6 +710,9 @@ def render_explain(reports, skipped, root):
         print(f"  candidates {c['candidates']} · not paths {c['not_a_path']} · "
               f"checked {c['verified']} · ok {c['ok']} · broken {c['broken']} · "
               f"ambiguous {c['ambiguous']} · muted {c['ignored']}")
+        print(f"  claims: stake {c['stake_level']} ({c['stake_from']}) · "
+              f"sources {c['sources']} · `[?]` {c['unknowns']} · "
+              f"unmarked {c['claims_unmarked']}")
         for kind, label in LABELS:
             items = [f for f in r["findings"] if f["kind"] == kind]
             if not items:
