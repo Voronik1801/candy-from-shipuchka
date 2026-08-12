@@ -30,11 +30,27 @@ docs/AGENTS.md   drift 65.5 [broken]   lag 68.0d · 34 changes since
 
 ## Установка
 
+**Короткий путь: один файл, ставить нечего.**
+
 ```bash
-pip install agent-context-drift      # или просто скопировать agent_drift.py
+curl -O https://raw.githubusercontent.com/Voronik1801/candy-from-shipuchka/main/agent-context-drift/agent_drift.py
+python3 agent_drift.py --explain
 ```
 
-Python 3.9+, один файл, ноль зависимостей.
+Python 3.9+, только стандартная библиотека. Зависимостей нет, а значит нечему
+конфликтовать и нечему ломаться.
+
+**Если хочется командой** — `pipx` не трогает системный питон:
+
+```bash
+pipx install "git+https://github.com/Voronik1801/candy-from-shipuchka.git#subdirectory=agent-context-drift"
+agent-drift --explain
+```
+
+То же самое через `pip` работает внутри виртуального окружения. Обычный
+`pip install` в системный или homebrew-питон откажется, и правильно сделает.
+
+В PyPI пакета пока нет.
 
 ## Использование
 

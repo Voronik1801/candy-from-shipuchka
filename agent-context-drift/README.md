@@ -32,11 +32,27 @@ docs/AGENTS.md   drift 65.5 [broken]   lag 68.0d · 34 changes since
 
 ## Install
 
+**The short way — one file, nothing to install:**
+
 ```bash
-pip install agent-context-drift      # or just copy agent_drift.py, stdlib only
+curl -O https://raw.githubusercontent.com/Voronik1801/candy-from-shipuchka/main/agent-context-drift/agent_drift.py
+python3 agent_drift.py --explain
 ```
 
-Python 3.9+. One file, zero dependencies.
+Python 3.9+, standard library only. No dependencies, so there is nothing to
+resolve and nothing to break.
+
+**If you want it as a command**, `pipx` keeps it out of your system Python:
+
+```bash
+pipx install "git+https://github.com/Voronik1801/candy-from-shipuchka.git#subdirectory=agent-context-drift"
+agent-drift --explain
+```
+
+Same thing with `pip` works inside a virtualenv. Plain `pip install` into a
+Homebrew or system Python will refuse, and that refusal is correct.
+
+Not on PyPI yet.
 
 ## Use
 
@@ -56,9 +72,11 @@ Recognised out of the box: `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`,
 ```yaml
 - name: Check agent instructions against the tree
   run: |
-    pip install agent-context-drift
-    agent-drift --fail-over 40 --explain
+    curl -sO https://raw.githubusercontent.com/Voronik1801/candy-from-shipuchka/main/agent-context-drift/agent_drift.py
+    python3 agent_drift.py --fail-over 40 --explain
 ```
+
+No install step, because there is nothing to install.
 
 Now a PR that renames a directory without touching the instructions fails,
 instead of silently misleading every agent that reads them afterwards.

@@ -27,7 +27,7 @@ tokens: ~3 seconds, a JSON report, and a drift score. Runs in CI with
 `--fail-over 40`.
 
 ```bash
-cd agent-context-drift && python3 agent_drift.py --explain
+python3 agent-context-drift/agent_drift.py --explain
 ```
 
 Python 3.9+, standard library only, one file. 18 tests pin the false-positive

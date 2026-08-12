@@ -26,7 +26,7 @@
 токенов: ~3 секунды, JSON-отчёт и балл дрейфа. В CI — через `--fail-over 40`.
 
 ```bash
-cd agent-context-drift && python3 agent_drift.py --explain
+python3 agent-context-drift/agent_drift.py --explain
 ```
 
 Python 3.9+, только стандартная библиотека, один файл. 18 тестов держат классы
