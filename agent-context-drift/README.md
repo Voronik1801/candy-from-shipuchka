@@ -30,29 +30,23 @@ docs/AGENTS.md   drift 65.5 [broken]   lag 68.0d · 34 changes since
                  migrations/
 ```
 
-## Install
+## Two ways to run it
 
-**The short way — one file, nothing to install:**
+**As a script.** Grab one file, run it. There is nothing to install: standard
+library only, Python 3.9+.
 
 ```bash
 curl -O https://raw.githubusercontent.com/Voronik1801/candy-from-shipuchka/main/agent-context-drift/agent_drift.py
 python3 agent_drift.py --explain
 ```
 
-Python 3.9+, standard library only. No dependencies, so there is nothing to
-resolve and nothing to break.
+**As a skill.** Copy `SKILL.md` into `.claude/skills/agent-drift/` and say
+"check my instruction files". The skill runs the scan, sorts findings into
+*outdated* / *undocumented* / *deliberate* / *unclear*, proposes one concrete
+edit each, and waits for your approval before writing anything.
 
-**If you want it as a command**, `pipx` keeps it out of your system Python:
-
-```bash
-pipx install "git+https://github.com/Voronik1801/candy-from-shipuchka.git#subdirectory=agent-context-drift"
-agent-drift --explain
-```
-
-Same thing with `pip` works inside a virtualenv. Plain `pip install` into a
-Homebrew or system Python will refuse, and that refusal is correct.
-
-Not on PyPI yet.
+Deliberately not a library and not a PyPI package. Nobody imports this; you
+either run it in a pipeline or hand it to an agent.
 
 ## Use
 
@@ -148,15 +142,6 @@ Commit it — it is part of your governance, unlike a cache.
 
 **A warning about this file:** if it grows while the detector's accuracy stays
 flat, the filters are wrong and the fix belongs in the code, not here.
-
-## Use with Claude Code
-
-`skills/agent-drift/SKILL.md` wraps the detector for Claude Code: it runs
-the scan, sorts findings into *outdated* / *undocumented* / *deliberate* /
-*unclear*, proposes one concrete edit each, and **waits for your approval**
-before writing anything.
-
-Copy it into `.claude/skills/` and ask "check my instruction files".
 
 ## Limits
 

@@ -1,11 +1,12 @@
 # candy from shipuchka
 
-Small, self-contained tools that fell out of running a personal operating
-system on top of AI agents. Each one solves a problem I actually hit, was
-calibrated against a real repository rather than a demo, and ships on its own —
-take a single file and go.
+Skills and scripts that fell out of running a personal operating system on top
+of AI agents. Each one solves a problem I actually hit and was calibrated
+against a real repository rather than a demo.
 
-No framework, no platform, nothing to sign up for. Unwrap what you need.
+Every tool comes in two forms: a `SKILL.md` you hand to your agent, and a
+script you run yourself. No libraries, no packages, no framework, nothing to
+sign up for. Take one file and go.
 
 [Читать по-русски](README.ru.md)
 
@@ -66,7 +67,12 @@ what is inside it.
 ## Using these
 
 Every tool is independent: its own README, its own tests, no shared runtime.
-Copy a file into your project, or clone the folder — both work.
+
+- **Skill:** copy `<tool>/SKILL.md` into `.claude/skills/<tool>/`
+- **Script:** copy the `.py` file anywhere and run it with Python 3.9+
+
+Nothing here is published to PyPI on purpose. These are not libraries — you do
+not import them, you run them or give them to an agent.
 
 Issues and pull requests are welcome, especially reports of false positives
 with the snippet that triggered them. That kind of report is what turned the

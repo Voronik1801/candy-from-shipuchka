@@ -9,15 +9,24 @@ cross-imports between them.
 ```
 candy-from-shipuchka/
 ├── agent-context-drift/   ← lints agent instruction files against the tree
+│   ├── SKILL.md           ← the agent-facing half
+│   ├── agent_drift.py     ← the script half
+│   └── tests/
 ├── creative-wander/       ← idea machine: random fragments → collisions → judges
+│   ├── SKILL.md
+│   └── wander.py
 └── .github/workflows/     ← one workflow per tool, path-filtered
 ```
+
+Every tool ships in two forms: a `SKILL.md` for an agent and a script for a
+human or a pipeline. Neither is a library; nothing is published to PyPI.
 
 ## Adding a tool
 
 One directory, and inside it: `README.md` explaining the problem before the
-solution, the code, tests where behaviour is non-obvious, and a workflow in
-`.github/workflows/<tool>.yml` filtered on that directory's path.
+solution, `SKILL.md` for the agent-facing form, the script itself, tests where
+behaviour is non-obvious, and a workflow in `.github/workflows/<tool>.yml`
+filtered on that directory's path.
 
 Add it to both `README.md` and `README.ru.md` — the box is only useful if the
 label lists what is inside.
