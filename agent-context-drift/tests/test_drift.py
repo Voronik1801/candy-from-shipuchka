@@ -141,6 +141,13 @@ class ClaimDrift(unittest.TestCase):
                            resolve=lambda v, b, r: "broken")
         self.assertEqual([x["kind"] for x in f], ["broken_source"])
 
+    def test_a_soft_verdict_does_not_excuse_a_missing_source(self):
+        """The resolver softens unknown tree leaves to "descriptive"; a source
+        must not inherit that mercy — it is an address, not a topic."""
+        f, _ = self._check("Median 950 [source: tools/gone-away/]",
+                           resolve=lambda v, b, r: "descriptive")
+        self.assertEqual([x["kind"] for x in f], ["broken_source"])
+
     def test_a_live_source_silences_the_number(self):
         """A marked claim must not also be reported as unmarked."""
         f, c = self._check("Median reach 950 [source: tools/]")

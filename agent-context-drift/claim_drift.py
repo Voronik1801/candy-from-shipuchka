@@ -172,10 +172,16 @@ def check(owner: Path, text: str, base: Path, root: Path, resolve, owner_rel: st
                 continue
             if ignored(owner_rel, value):
                 continue
-            if resolve(value, base, root) in ("broken", "template_unused"):
-                findings.append({"kind": "broken_source", "value": value,
-                                 "line": lineno, "zone": "claim",
-                                 "reason": "source not found"})
+            verdict = resolve(value, base, root)
+            # A source is held to a stricter standard than a mention. The host
+            # resolver softens unknown paths to "descriptive" — a tree leaf
+            # names a topic, not necessarily a file — but a source is an
+            # address the reader is told to walk to. If it isn't there, say so.
+            if verdict not in ("ok", "ambiguous", "external", "skip"):
+                if not any((b / value).exists() for b in (owner.parent, base, root)):
+                    findings.append({"kind": "broken_source", "value": value,
+                                     "line": lineno, "zone": "claim",
+                                     "reason": f"source not found ({verdict})"})
 
         if UNKNOWN_RE.search(ln):
             n_unknown += 1
