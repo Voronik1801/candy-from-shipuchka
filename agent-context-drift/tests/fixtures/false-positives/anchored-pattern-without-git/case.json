@@ -1,0 +1,11 @@
+{
+  "claim": "anchored ignore pattern silently matching nothing outside a git repository",
+  "why": "Exclude files anchor with a leading slash (/local-notes/). Stripping only the trailing one leaves a pattern that matches nothing, so the fallback path quietly stops ignoring anything at all.",
+  "git": false,
+  "gitignore": ["/local-notes/"],
+  "absent": [{"kind": "undocumented_dir", "value": "local-notes/"}],
+  "present": [
+    {"kind": "undocumented_dir", "value": "services/"},
+    {"kind": "broken_path", "value": "docs/runbook-2024.md"}
+  ]
+}

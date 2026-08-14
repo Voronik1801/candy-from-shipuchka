@@ -1,0 +1,11 @@
+{
+  "claim": "plugin-installed and command-installed skill reported as missing",
+  "why": "Plugins are now a normal way to install a skill. A checker that knows only .claude/skills/ reports a working plugin setup as entirely broken — precision 0 of 2 on the first run, which argues for switching the whole tool off.",
+  "git": true,
+  "args": ["--strict-skills"],
+  "absent": [
+    {"kind": "missing_skill", "value": "/audit"},
+    {"kind": "missing_skill", "value": "/deploy-helper"}
+  ],
+  "present": [{"kind": "missing_skill", "value": "/gone-away"}]
+}

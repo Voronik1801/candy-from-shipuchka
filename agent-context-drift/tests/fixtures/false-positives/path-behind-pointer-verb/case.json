@@ -1,0 +1,10 @@
+{
+  "claim": "path preceded by a pointer verb reported as ambiguous",
+  "why": "Testing only the first token assumes the path comes first. Instruction files routinely write `Read docs/x.md`, and the leftover verb resolved by basename — filling the ambiguous bucket, which the report tells readers to collapse as \"works\", with references that are not ambiguous at all.",
+  "git": true,
+  "absent": [
+    {"kind": "ambiguous_ref", "value": "Read docs/architecture.md"},
+    {"kind": "ambiguous_ref", "value": "file://docs/architecture.md"}
+  ],
+  "present": [{"kind": "broken_path", "value": "../outside/thing.md"}]
+}

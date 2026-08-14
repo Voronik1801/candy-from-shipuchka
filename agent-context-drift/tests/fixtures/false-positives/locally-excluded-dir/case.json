@@ -1,0 +1,11 @@
+{
+  "claim": "locally excluded directory reported as undocumented",
+  "why": ".git/info/exclude is where a developer parks scratch plans and local reports — exactly the directories an instruction file must never document. Reading only .gitignore makes this class frequent by construction: 34 of 41 findings on one private repository.",
+  "git": true,
+  "git_exclude": ["/local-notes/"],
+  "absent": [{"kind": "undocumented_dir", "value": "local-notes/"}],
+  "present": [
+    {"kind": "undocumented_dir", "value": "services/"},
+    {"kind": "broken_path", "value": "docs/runbook-2024.md"}
+  ]
+}

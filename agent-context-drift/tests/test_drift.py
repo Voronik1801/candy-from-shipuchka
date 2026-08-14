@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT))
 
 import agent_drift
 import claim_drift  # noqa: E402
+from tests import corpus  # noqa: E402
 
 
 def run_fixture():
@@ -191,84 +192,49 @@ class ClaimDrift(unittest.TestCase):
         self.assertEqual(few, many)
 
 
-class LocalExcludes(unittest.TestCase):
-    """Ignores live in three files, not one.
+class FalsePositiveCorpus(unittest.TestCase):
+    """Every named false positive, run end to end over its own repository.
 
-    `.git/info/exclude` is where a developer parks scratch plans and local
-    reports — precisely the directories an instruction file must never
-    document. Reading only `.gitignore` therefore makes this category of false
-    positive frequent by construction: on one private repository 34 of 41
-    findings came from that single gap.
+    These cases need a repository of their own — a git state, an exclude file,
+    a plugin layout — which the shared fixture cannot carry. Before the corpus
+    each of them built one by hand inside the test that needed it, so nothing
+    could answer "which false positives are pinned". Now `tests/corpus.py`
+    prints exactly that list.
+
+    Each case asserts silence *and* a defect the same run must still report.
+    Silence alone is cheap: disabling a signal buys it, and a corpus that only
+    checked for silence would call that a pass.
     """
 
-    def _repo(self, git: bool):
+    def _run(self, case):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
-        (tmp / "docs").mkdir()
-        (tmp / "local-notes").mkdir()
-        (tmp / "docs" / "architecture.md").write_text("a\n")
-        (tmp / "local-notes" / "scratch.md").write_text("b\n")
-        (tmp / "CLAUDE.md").write_text(
-            "# Demo\n\nArchitecture lives in `docs/architecture.md`.\n")
-        if git:
-            subprocess.run(["git", "init", "-q", "."], cwd=tmp, check=True)
-            (tmp / ".git" / "info" / "exclude").write_text("/local-notes/\n")
-        else:
-            # No repository: the pattern fallback has to carry the same case,
-            # leading slash and all.
-            (tmp / ".gitignore").write_text("/local-notes/\n")
-        return tmp
+        corpus.build(case, tmp)
+        return corpus.findings(tmp, case.get("args", []), ROOT / "agent_drift.py")
 
-    def _undocumented(self, root: Path):
-        out = subprocess.run(
-            [sys.executable, str(ROOT / "agent_drift.py"), "--root", str(root)],
-            capture_output=True, text=True, check=True)
-        rep = json.loads(out.stdout)["files"][0]
-        return [f["value"] for f in rep["findings"]
-                if f["kind"] == "undocumented_dir"]
+    def test_corpus(self):
+        cases = corpus.load_cases()
+        self.assertTrue(cases, "corpus is empty")
+        for case in cases:
+            with self.subTest(case=case["slug"]):
+                found = {(f["kind"], f["value"]) for f in self._run(case)}
+                for a in case.get("absent", []):
+                    self.assertNotIn((a["kind"], a["value"]), found,
+                                     f'{case["slug"]}: {case["claim"]}')
+                for p in case.get("present", []):
+                    self.assertIn((p["kind"], p["value"]), found,
+                                  f'{case["slug"]}: signal went silent entirely')
 
-    def test_locally_excluded_dir_is_not_undocumented(self):
-        self.assertEqual(self._undocumented(self._repo(git=True)), [])
-
-    def test_anchored_pattern_still_matches_without_git(self):
-        self.assertEqual(self._undocumented(self._repo(git=False)), [])
-
-
-class PointerVerbs(unittest.TestCase):
-    """`Read docs/x.md` names the same file as `docs/x.md`.
-
-    Testing only the first token assumes the path comes first. Instruction
-    files routinely put a verb or an arrow ahead of it inside the same code
-    span, and the leftover verb resolved by basename — filling `ambiguous`,
-    which the report tells the reader to collapse as "works", with references
-    that are not ambiguous at all.
-    """
-
-    def _verdict(self, span):
-        return agent_drift.resolve(span, FIXTURE, FIXTURE,
-                                   agent_drift.build_fs_index(FIXTURE))[0]
-
-    def test_bare_path_and_verb_prefixed_path_agree(self):
-        bare = self._verdict("docs/architecture.md")
-        self.assertEqual(bare, "ok")
-        for span in ("Read docs/architecture.md", "See docs/architecture.md",
-                     "→ docs/architecture.md", "file://docs/architecture.md"):
-            self.assertEqual(self._verdict(span), bare, span)
-
-    def test_trailing_arguments_still_resolve_to_the_path(self):
-        """The original behaviour this shares code with must not regress."""
-        self.assertEqual(self._verdict("scripts/deploy.sh --force"),
-                         self._verdict("scripts/deploy.sh"))
+    def test_every_case_proves_the_signal_still_fires(self):
+        """A case with no `present` cannot tell a fix from a disabled check."""
+        for case in corpus.load_cases():
+            with self.subTest(case=case["slug"]):
+                self.assertTrue(case.get("present"),
+                                f'{case["slug"]} has no positive control')
 
 
 class SkillInstalls(unittest.TestCase):
-    """A skill can arrive by more routes than one directory.
-
-    Plugins are now a normal way to install one, so a checker that only knows
-    `.claude/skills/` calls a working setup entirely broken. And since some
-    slash commands ship inside the CLI and exist nowhere on disk, no allowlist
-    can make the check honest — hence silence by default.
-    """
+    """Unit half of the plugin case: the routes a skill can arrive by."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -288,10 +254,25 @@ class SkillInstalls(unittest.TestCase):
         text = "Run `/whatever-ships-with-the-cli`."
         self.assertEqual(agent_drift.missing_skills(text, self.tmp), [])
 
-    def test_strict_reports_only_what_really_moved(self):
-        text = "Commands: `/audit`, `/deploy-helper` and `/gone-away`."
-        self.assertEqual(agent_drift.missing_skills(text, self.tmp, strict=True),
-                         ["gone-away"])
+
+class PointerVerbs(unittest.TestCase):
+    """Unit half of the verb case, including the behaviour it shares code with."""
+
+    def _verdict(self, span):
+        return agent_drift.resolve(span, FIXTURE, FIXTURE,
+                                   agent_drift.build_fs_index(FIXTURE))[0]
+
+    def test_bare_path_and_verb_prefixed_path_agree(self):
+        bare = self._verdict("docs/architecture.md")
+        self.assertEqual(bare, "ok")
+        for span in ("Read docs/architecture.md", "See docs/architecture.md",
+                     "→ docs/architecture.md", "file://docs/architecture.md"):
+            self.assertEqual(self._verdict(span), bare, span)
+
+    def test_trailing_arguments_still_resolve_to_the_path(self):
+        """The original behaviour this shares code with must not regress."""
+        self.assertEqual(self._verdict("scripts/deploy.sh --force"),
+                         self._verdict("scripts/deploy.sh"))
 
 
 if __name__ == "__main__":
