@@ -27,12 +27,18 @@ Checks every path mentioned against the real tree. No LLM, no network, no
 tokens: ~3 seconds, a JSON report, and a drift score. Runs in CI with
 `--fail-over 40`.
 
+A second layer catches what a path check cannot see at all: a claim with no
+address. "Median reach is 950" never breaks, because there is nothing in it to
+break. `claim_drift.py` reads the stake level of a file, the `[source: …]` and
+`[?]` markers on its statements, and — via `git blame` — how long an unverified
+one has sat there.
+
 ```bash
 python3 agent-context-drift/agent_drift.py --explain
 ```
 
-Python 3.9+, standard library only, one file. 18 tests pin the false-positive
-classes that made the naive version report 159 broken paths where 8 were real.
+Python 3.9+, standard library only. 35 tests pin the false-positive classes
+that made the naive version report 159 broken paths where 8 were real.
 
 ### 🍬 [creative-wander](creative-wander/)
 
