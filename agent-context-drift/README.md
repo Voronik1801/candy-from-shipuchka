@@ -55,11 +55,18 @@ agent-drift                    # JSON report for the whole repo
 agent-drift --explain          # human-readable
 agent-drift --summary          # one line, silent when nothing is wrong
 agent-drift --fail-over 40     # exit 1 when any file drifts past 40 — for CI
+agent-drift --strict-skills    # also check `/name` mentions — see below
 agent-drift --file docs/AGENTS.md
 ```
 
 Recognised out of the box: `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`,
 `.cursorrules`, `copilot-instructions.md`. Anything else via `--name`.
+
+`--strict-skills` reports `/name` mentions that resolve nowhere on disk. It is
+off by default because it cannot be honest for everyone: some slash commands
+ship inside the CLI and exist in no directory, so a renamed skill and a
+built-in look identical from here. Turn it on if your repository keeps every
+skill in-tree.
 
 ### In CI
 

@@ -282,11 +282,20 @@ def resolve(cand: str, owner_dir: Path, root: Path,
     if not s:
         return "skip", "empty"
 
-    # "scripts/setup.sh --force": check the first token, not the whole line
+    # "scripts/setup.sh --force": check the path, not the whole line. The path
+    # is usually first, but instruction files also write `Read docs/x.md` and
+    # `→ docs/x.md`, so a non-path head means "keep looking", not "give up" —
+    # otherwise the whole span falls through to a basename match and lands in
+    # `ambiguous`, the bucket meant for references that really are misplaced.
     if " " in s:
-        head = s.split()[0]
-        if "/" in head or os.path.splitext(head)[1]:
-            s = head
+        for tok in s.split():
+            if "/" in tok or os.path.splitext(tok)[1]:
+                s = tok
+                break
+
+    # `file://docs/x.md` is the same reference wearing a scheme.
+    if s.startswith("file://"):
+        s = s[len("file://"):]
 
     # A path written from the repo name down ("myrepo/docs") is stripped first,
     # templates included — otherwise `myrepo/src/**` matches no glob at all.
@@ -392,16 +401,67 @@ def ignored(rules, owner_rel: str, value: str) -> bool:
 
 # ── secondary signals ────────────────────────────────────────────────────────
 
-def load_gitignore(root: Path) -> list[str]:
-    f = root / ".gitignore"
-    if not f.exists():
-        return []
-    return [ln.strip().rstrip("/") for ln in f.read_text(errors="ignore").splitlines()
-            if ln.strip() and not ln.startswith("#")]
+class Excluded:
+    """Whether git hides a path — asked of git, not re-implemented.
+
+    Ignores come from three places (`.gitignore`, `.git/info/exclude`,
+    `core.excludesFile`) and may be undone by `!pattern`. A hand-rolled fnmatch
+    pass reads the first source and cannot express the last, which makes local
+    scratch folders — exactly what instructions must never document — the tool's
+    largest source of false alarms.
+
+    One `git ls-files` call answers all of it. `--directory` collapses a fully
+    ignored tree to its top folder, so the set stays small even next to
+    `node_modules/`. Outside a repository git has nothing to say, and the
+    pattern fallback keeps the tool usable there.
+    """
+
+    def __init__(self, root: Path):
+        self.root = root
+        self.paths = self._from_git(root)
+        self.patterns = [] if self.paths is not None else self._from_files(root)
+
+    @staticmethod
+    def _from_git(root: Path):
+        try:
+            out = subprocess.run(
+                ["git", "ls-files", "--others", "--ignored", "--directory",
+                 "--exclude-standard"],
+                cwd=root, capture_output=True, text=True, timeout=10)
+        except Exception:
+            return None
+        if out.returncode != 0:
+            return None
+        return {ln.strip("/") for ln in out.stdout.splitlines() if ln.strip()}
+
+    @staticmethod
+    def _from_files(root: Path) -> list[str]:
+        out = []
+        for name in (".gitignore", ".git/info/exclude"):
+            f = root / name
+            if not f.exists():
+                continue
+            # strip, not rstrip: exclude files anchor with a leading slash
+            # (`/local-notes/`), and a pattern that keeps it matches nothing.
+            out += [ln.strip().strip("/") for ln in f.read_text(errors="ignore").splitlines()
+                    if ln.strip() and not ln.startswith("#")]
+        return out
+
+    def hides(self, path: Path) -> bool:
+        try:
+            rel = path.resolve().relative_to(self.root).as_posix()
+        except ValueError:
+            return False
+        if self.paths is not None:
+            parts = rel.split("/")
+            return any("/".join(parts[:i + 1]) in self.paths for i in range(len(parts)))
+        name = rel.rsplit("/", 1)[-1]
+        return any(fnmatch.fnmatch(rel, g) or fnmatch.fnmatch(name, g) or
+                   rel.split("/")[0] == g for g in self.patterns)
 
 
 def undocumented_dirs(base: Path, nested: list[Path], text: str,
-                      gitignore: list[str], rules, owner_rel: str):
+                      excluded: "Excluded", rules, owner_rel: str):
     """Directories the instructions never mention.
 
     Depth is capped on purpose: an instruction file describes architecture, it
@@ -418,7 +478,7 @@ def undocumented_dirs(base: Path, nested: list[Path], text: str,
             continue
         if not in_scope(d, base, nested):
             continue
-        if any(fnmatch.fnmatch(str(rel), g) or rel.parts[0] == g for g in gitignore):
+        if excluded.hides(d):
             continue
         # A nested git repository is someone else's territory: instructions
         # describe it as a whole, not its innards.
@@ -467,7 +527,7 @@ def classify_loose(p: Path) -> str:
     return "unknown"
 
 
-def loose_files(base: Path, text: str, gitignore: list[str], rules, owner_rel: str):
+def loose_files(base: Path, text: str, excluded: "Excluded", rules, owner_rel: str):
     """Files scattered in the root of a documented folder.
 
     Depth 0 on purpose: inside `output/` or `notes/` files are *supposed* to pile
@@ -480,7 +540,7 @@ def loose_files(base: Path, text: str, gitignore: list[str], rules, owner_rel: s
             continue
         if p.name.lower() in ROOT_STAPLES or p.name in text:
             continue
-        if any(fnmatch.fnmatch(p.name, g) for g in gitignore):
+        if excluded.hides(p):
             continue
         if ignored(rules, owner_rel, p.name):
             continue
@@ -507,22 +567,47 @@ def duplicate_docs(base: Path, text: str):
     return out
 
 
-def missing_skills(text: str, root: Path):
+def skill_installed(name: str, root: Path) -> bool:
+    """Whether a `/name` mention resolves to something on disk.
+
+    Skills arrive by several routes — in-tree `.claude/skills/`, loose
+    `commands/*.md`, and plugins that nest both one level deeper. A checker
+    that knows only the first route reports a plugin-based setup as entirely
+    broken, which is the fastest way to get itself switched off.
+    """
+    plugin, _, leaf = name.rpartition(":")
+    for home in (root, root / ".claude", Path.home() / ".claude", root / ".cursor"):
+        roots = [home]
+        if plugin:
+            roots = [home / "plugins" / plugin]
+        else:
+            roots += sorted(home.glob("plugins/*"))
+        for r in roots:
+            if any((r / d / leaf / "SKILL.md").exists() or (r / d / f"{leaf}.md").exists()
+                   for d in ("skills", "commands", "rules")):
+                return True
+    return False
+
+
+def missing_skills(text: str, root: Path, strict: bool = False):
     """Skills the instructions point at that do not exist.
 
     Rename a skill and the instruction silently sends the agent nowhere. Only
     explicit `/name` mentions inside backticks count: a loose search for
     "/word" picks up commit types and model names and drowns the report.
+
+    Off unless asked for, because the check cannot be honest by default. Some
+    slash commands ship inside the CLI and exist nowhere on disk; the old
+    hardcoded allowlist of a dozen names could not track a vendor's built-ins,
+    so every release that added one minted a false positive. Silence is the
+    right answer when the tool cannot enumerate the install surface — and
+    `--strict-skills` is there for repositories that keep every skill in-tree
+    and can therefore afford the opposite default.
     """
+    if not strict:
+        return []
     names = set(re.findall(r"`/([a-z][a-z0-9:-]{2,40})`", text))
-    homes = [root / ".claude" / "skills", Path.home() / ".claude" / "skills",
-             root / ".cursor" / "rules"]
-    builtin = {"loop", "schedule", "init", "help", "config", "clear", "run",
-               "compact", "review", "test", "build", "deploy"}
-    return [n for n in sorted(names)
-            if ":" not in n and n not in builtin
-            and not any((h / n / "SKILL.md").exists() or (h / f"{n}.md").exists()
-                        for h in homes)]
+    return [n for n in sorted(names) if not skill_installed(n, root)]
 
 
 def staleness(owner: Path, base: Path, nested: list[Path]):
@@ -592,7 +677,7 @@ def score(counts, undoc, sig_dirs, lag, churn, claim_rate=0.0):
 # ── per-file analysis ────────────────────────────────────────────────────────
 
 def analyze(owner: Path, owners: list[Path], root: Path, fs_index: dict,
-            rules, gitignore: list[str]) -> dict:
+            rules, excluded: "Excluded", strict_skills: bool = False) -> dict:
     base, nested = scope_of(owner, owners)
     owner_rel = str(owner.relative_to(root))
     text = owner.read_text(errors="ignore")
@@ -647,17 +732,17 @@ def analyze(owner: Path, owners: list[Path], root: Path, fs_index: dict,
             findings.append({"kind": "broken_path", "value": value,
                              "line": lineno, "zone": zone, "reason": reason})
 
-    undoc, sig_dirs = undocumented_dirs(base, nested, text, gitignore, rules, owner_rel)
+    undoc, sig_dirs = undocumented_dirs(base, nested, text, excluded, rules, owner_rel)
     findings.extend(undoc)
 
-    loose = loose_files(base, text, gitignore, rules, owner_rel)
+    loose = loose_files(base, text, excluded, rules, owner_rel)
     findings.extend(loose)
 
     dups = duplicate_docs(base, text)
     findings.extend({"kind": "duplicate_doc", "value": d} for d in dups)
 
     mentioned = set(re.findall(r"`/([a-z][a-z0-9:-]{2,40})`", text))
-    miss = missing_skills(text, root)
+    miss = missing_skills(text, root, strict_skills)
     findings.extend({"kind": "missing_skill", "value": "/" + m} for m in miss)
 
     lag, churn = staleness(owner, base, nested)
@@ -763,6 +848,10 @@ def main(argv=None):
     ap.add_argument("--explain", action="store_true", help="human-readable report")
     ap.add_argument("--summary", action="store_true", help="one line, empty when clean")
     ap.add_argument("--candidates", action="store_true", help="TSV of all findings")
+    ap.add_argument("--strict-skills", action="store_true",
+                    help="report `/name` mentions that resolve nowhere on disk. "
+                         "Off by default: CLI built-ins live nowhere, so the check "
+                         "only fits repositories that keep every skill in-tree")
     ap.add_argument("--fail-over", type=float, default=None, metavar="N",
                     help="exit 1 if any file drifts past N (for CI)")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -784,8 +873,9 @@ def main(argv=None):
             sys.exit(f"no such file: {target}")
 
     fs_index = build_fs_index(root)
-    gitignore = load_gitignore(root)
-    reports = [analyze(o, owners_all, root, fs_index, rules, gitignore) for o in owners]
+    excluded = Excluded(root)
+    reports = [analyze(o, owners_all, root, fs_index, rules, excluded, args.strict_skills)
+               for o in owners]
     reports.sort(key=lambda r: -r["drift"])
 
     if args.candidates:
