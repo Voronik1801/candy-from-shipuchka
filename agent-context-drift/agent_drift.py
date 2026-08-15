@@ -37,6 +37,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import claim_drift  # noqa: E402  — claims rot too, not just paths
+import skill_drift  # noqa: E402  — a skill is an instruction file that runs code
 
 __version__ = "0.1.0"
 
@@ -815,6 +816,39 @@ def render_explain(reports, skipped, root):
               + ", ".join(str(p.relative_to(root)) for p in skipped))
 
 
+PRACTICE_LABELS = {
+    "trigger": "1 · the description is the trigger",
+    "expertise": "2 · build from real expertise",
+    "context": "3 · spend context wisely",
+    "determinism": "4 · deterministic scripts",
+    "trust": "5 · vet before you run",
+}
+
+
+def render_skills(skills, totals):
+    """Grouped by practice, not by file: the useful question about a skill
+    library is which practice it fails across the board."""
+    print(f"\n{'=' * 72}\nSKILLS   {totals['skills']} checked "
+          f"({totals['own']} own · {totals['vendor']} vendored · "
+          f"{totals['external']} external)   "
+          f"{totals['clean']} clean · {totals['findings']} findings")
+    for practice, label in PRACTICE_LABELS.items():
+        hits = [(r, f) for r in skills for f in r["findings"]
+                if f["practice"] == practice]
+        print(f"\n  {label}: {len(hits)}")
+        for r, f in hits[:14]:
+            loc = f"{Path(r['path']).parent.name}"
+            print(f"      {loc:<28} {f['kind'][6:]:<22} {f['value'][:34]}")
+            print(f"      {'':<28} └─ {f['reason'][:80]}")
+        if len(hits) > 14:
+            print(f"      ... {len(hits) - 14} more")
+    worst = [r for r in skills if r["status"] in ("poor", "unsafe")]
+    if worst:
+        print(f"\n  worst: " + ", ".join(f"{Path(r['path']).parent.name} "
+                                        f"{r['risk']} [{r['status']}]"
+                                        for r in worst[:8]))
+
+
 def render_summary(reports):
     """One line for a hook. Silent unless it is genuinely worth interrupting."""
     bad = sorted([r for r in reports if r["drift"] >= 40], key=lambda r: -r["drift"])
@@ -852,6 +886,15 @@ def main(argv=None):
                     help="report `/name` mentions that resolve nowhere on disk. "
                          "Off by default: CLI built-ins live nowhere, so the check "
                          "only fits repositories that keep every skill in-tree")
+    ap.add_argument("--skills", action="store_true",
+                    help="also lint SKILL.md files against the five practices "
+                         "(trigger, expertise, context, determinism, trust)")
+    ap.add_argument("--skills-path", action="append", default=None, metavar="DIR",
+                    help="extra root to scan for skills; repeatable. Use it to "
+                         "reach ~/.claude/skills and installed plugins, which are "
+                         "never swept in by default")
+    ap.add_argument("--skills-only", action="store_true",
+                    help="skip instruction files entirely, report skills only")
     ap.add_argument("--fail-over", type=float, default=None, metavar="N",
                     help="exit 1 if any file drifts past N (for CI)")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -874,9 +917,19 @@ def main(argv=None):
 
     fs_index = build_fs_index(root)
     excluded = Excluded(root)
-    reports = [analyze(o, owners_all, root, fs_index, rules, excluded, args.strict_skills)
-               for o in owners]
+    reports = [] if args.skills_only else [
+        analyze(o, owners_all, root, fs_index, rules, excluded, args.strict_skills)
+        for o in owners]
     reports.sort(key=lambda r: -r["drift"])
+
+    skills, skill_totals = [], {}
+    if args.skills or args.skills_only or args.skills_path:
+        skills = [skill_drift.analyze_skill(
+                      p, root, ignored=lambda rel, val: ignored(rules, rel, val))
+                  for p in skill_drift.find_skills(
+                      root, [Path(d) for d in (args.skills_path or [])])]
+        skills.sort(key=lambda r: -r["risk"])
+        skill_totals = skill_drift.summarize(skills)
 
     if args.candidates:
         render_candidates(reports)
@@ -884,17 +937,23 @@ def main(argv=None):
         render_summary(reports)
     elif args.explain:
         render_explain(reports, skipped, root)
+        if skills:
+            render_skills(skills, skill_totals)
     else:
-        print(json.dumps({
+        payload = {
             "schema": 1, "version": __version__,
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "root": str(root),
             "skipped": [str(p.relative_to(root)) for p in skipped],
             "files": reports,
-        }, ensure_ascii=False, indent=1))
+        }
+        if skills:
+            payload["skills"] = {"totals": skill_totals, "items": skills}
+        print(json.dumps(payload, ensure_ascii=False, indent=1))
 
     if args.fail_over is not None:
-        worst = max((r["drift"] for r in reports), default=0)
+        worst = max([r["drift"] for r in reports]
+                    + [r["risk"] for r in skills], default=0)
         if worst > args.fail_over:
             print(f"drift {worst} exceeds threshold {args.fail_over}", file=sys.stderr)
             return 1

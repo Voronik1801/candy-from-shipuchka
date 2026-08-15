@@ -129,6 +129,44 @@ nature — `drafts/`, `ideas/`, `capture/`, `archive/` — are always T0.
 mandate: marking up every number in the repository would be exactly the
 imitation of rigour this is supposed to expose.
 
+## Skills rot differently
+
+An instruction file can only be wrong. A skill can also be *never selected*,
+*too expensive to load*, or *executing code you never read* — it is an
+instruction file that ships with a shell. `--skills` lints `SKILL.md` files
+against the five practices those failures map onto:
+
+```bash
+agent-drift --skills-only --explain
+agent-drift --skills-only --skills-path ~/.claude/plugins    # installed ones too
+```
+
+| Practice | Signals |
+|---|---|
+| 1 · the description is the trigger | `skill_description_no_trigger`, `skill_description_thin`, `skill_description_vague`, `skill_name_mismatch` |
+| 2 · build from real expertise | `skill_no_gotchas`, `skill_generic_advice` |
+| 3 · spend context wisely | `skill_body_too_long`, `skill_reference_unlinked` |
+| 4 · deterministic scripts | `skill_script_unlinked`, `skill_script_intent_unclear` |
+| 5 · vet before you run | `skill_script_reaches_out`, `skill_script_exfil_shape`, `skill_prompt_injection`, `skill_hidden_instruction` |
+
+**Origin decides strictness.** A skill inside your own repository is held to all
+five. A vendored plugin is checked for trust and context only: nobody can act on
+"your plugin is missing a gotchas section", and advice you cannot act on is what
+teaches you to skim the report.
+
+The two checks worth explaining. `skill_description_no_trigger` fires when a
+description says what a skill does but never when to use it — models
+under-trigger, so that skill quietly never runs, and a skill that does not fire
+produces no error to notice. `skill_script_intent_unclear` fires when the body
+mentions a script without telling the agent to *run* it: read as reference
+material, the script gets reimplemented from scratch on every run, which is the
+exact guessing it existed to remove.
+
+Sources: [agentskills.io](https://agentskills.io) for the field limits;
+[IBM Technology, *5 Best Practices for Building AI Agent Skills*](https://www.youtube.com/watch?v=qYNs80FKIVc)
+(2026-08-10) for the ~500-line budget and the audit that found >35% of ~4000
+public skills carrying a flaw.
+
 ## Why the false positives are the whole story
 
 Writing "check that every path exists" takes an evening. The first run of this
