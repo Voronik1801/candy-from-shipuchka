@@ -43,6 +43,14 @@ from pathlib import Path
 # ── markup ───────────────────────────────────────────────────────────────────
 
 SOURCE_RE = re.compile(r"\[(?:source|источник):\s*([^\]]+)\]", re.I)
+
+# A file that *documents* this markup writes the marker with a placeholder
+# inside: `[source: …]`, `[source: {path or URL}]`. That is the syntax being
+# explained, not an address anyone can walk to — and the rulebook describing
+# the convention is exactly the file most likely to contain it. Reported once
+# on the repository's own CLAUDE.md, in the table defining the stake levels.
+SOURCE_PLACEHOLDER = re.compile(r"^(…|\.\.\.|\{[^}]*\}|<[^>]+>|path|URL|путь)"
+                                r"[\s|]*$", re.I)
 UNKNOWN_RE = re.compile(r"\[\?\]")
 STAKE_RE = re.compile(r"(?:stake level|уровень ставки):\s*\**\s*(T[012])", re.I)
 
@@ -169,6 +177,8 @@ def check(owner: Path, text: str, base: Path, root: Path, resolve, owner_rel: st
             marked = True
             value = raw.strip().strip("`").rstrip(".,;")
             if value.startswith(("http://", "https://", "mailto:")):
+                continue
+            if SOURCE_PLACEHOLDER.match(value):
                 continue
             if ignored(owner_rel, value):
                 continue

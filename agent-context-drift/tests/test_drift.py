@@ -152,6 +152,22 @@ class ClaimDrift(unittest.TestCase):
                            resolve=lambda v, b, r: "descriptive")
         self.assertEqual([x["kind"] for x in f], ["broken_source"])
 
+    def test_marker_written_as_syntax_example_is_not_a_dead_source(self):
+        """The file documenting this convention writes `[source: …]` to show
+        the syntax. Reported once on the repository's own CLAUDE.md — the
+        rulebook is the file most likely to contain the example."""
+        for example in ("[источник: …]", "[source: {path or URL}]",
+                        "[source: <path>]"):
+            f, c = self._check(f"Каждое утверждение — либо {example}, либо `[?]`.")
+            self.assertEqual([x["kind"] for x in f], [], example)
+
+    def test_a_real_source_is_still_checked(self):
+        """Positive control: the leniency covers placeholders only."""
+        f, _ = self._check("Медиана 950 [источник: tools/gone/]",
+                           resolve=lambda v, b, r: "broken")
+        self.assertEqual([x["kind"] for x in f], ["broken_source"])
+
+
     def test_a_live_source_silences_the_number(self):
         """A marked claim must not also be reported as unmarked."""
         f, c = self._check("Median reach 950 [source: tools/]")
