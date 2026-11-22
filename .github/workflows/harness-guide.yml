@@ -19,16 +19,13 @@ jobs:
         run: |
           bash -n templates/deploy.sh
           bash -n templates/claude-hooks/guard-main.sh
-          bash -n templates/git-hooks/commit-msg
-          bash -n templates/git-hooks/pre-push
+          sh -n templates/git-hooks/commit-msg
+          sh -n templates/git-hooks/pre-push
       - name: Settings template is valid JSON
         run: python3 -m json.tool templates/claude-settings.json > /dev/null
-      - name: Guard hook blocks a commit on main
-        run: |
-          tmp="$(mktemp -d)" && cd "$tmp" && git init -q -b main .
-          git -c user.name=ci -c user.email=ci@example.invalid commit -q --allow-empty -m "init"
-          set +e
-          echo '{"tool_input":{"command":"git commit -m x"}}' | bash "$GITHUB_WORKSPACE/harness-guide/templates/claude-hooks/guard-main.sh"
-          code=$?
-          set -e
-          test "$code" -eq 2
+      - name: Agent hook scenarios
+        run: bash tests/test_guard.sh
+      - name: Git hook scenarios
+        run: bash tests/test_git_hooks.sh
+      - name: Deploy script scenarios
+        run: bash tests/test_deploy.sh

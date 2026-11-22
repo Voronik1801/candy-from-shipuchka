@@ -21,6 +21,7 @@ The rules you apply live next to this file:
 - `rules/AGENT_GUIDE.md` - the rules for everyday work (git, files, secrets, server, deploy).
 - `rules/HERMES_GUIDE.md` - the rules for an agent that lives on a server and takes requests from a messenger.
 - `templates/` - ready files: agent settings, a hook that blocks commits to main, git hooks, a deploy script.
+- `tests/` - scenario scripts for the templates. Run them when you change a template.
 
 Read `rules/AGENT_GUIDE.md` before the first step. Read `rules/HERMES_GUIDE.md`
 only when the work reaches an agent on a server.
@@ -41,7 +42,8 @@ only when the work reaches an agent on a server.
 
 ## What you never do without an explicit yes for that exact action
 
-Deleting anything; rewriting git history; changing users, keys, sudo rights or
+Deleting anything (routine cleanup of your own already merged branch and its worktree is the
+one exception); rewriting git history; changing users, keys, sudo rights or
 login settings; opening a port to the internet; anything that costs money;
 publishing or sending anything outside; restarting a service other people use.
 An old or general permission does not count. One request, one action.
@@ -79,7 +81,7 @@ out of scope and write down that they were skipped.
 | 2 | Instruction file | `CLAUDE.md` (plus `AGENTS.md` if other agents are used): what the project is, where things live, the few rules that prevent real mistakes. Short. Rare or long material goes into skills | a fresh session answers "where do I put X" correctly |
 | 3 | Agent permissions | `git init`, first commit and first push of `main` happen here, before any hook is on. Then `templates/claude-settings.json` as `.claude/settings.json`; `templates/claude-hooks/guard-main.sh` into `.claude/hooks/` followed by `chmod +x`; deny rules for secret files. The hook needs `python3` on the machine - check `python3 --version` first, without it the hook blocks every command | with at least one commit present, a test commit on `main` is blocked; reading `.env` is refused |
 | 4 | Git workflow | task first, then branch `<owner>/<number>-<slug>`, then one merge/pull request; copy `templates/git-hooks/*` into `.githooks/`, run `chmod +x .githooks/*` and `git config core.hooksPath .githooks` (git silently skips a hook that is not executable); branch protection on the hosting site | a commit without a task number is rejected; a direct push to `main` is rejected |
-| 5 | Secrets | one env file outside the repository; an example file with names only; `.gitignore` verified with `git check-ignore -v`; a secret scanner in the checks | `git status` shows no secret files; the scanner run is clean |
+| 5 | Secrets | one env file outside the repository; an example file with names only; `.gitignore` verified with `git check-ignore -v`; the pattern search from mode B run once now and added to the checks | `git status` shows no secret files; the scanner run is clean |
 | 6 | Server access | a personal user per human, own SSH key per person and per device, root login and password login off. Order matters, see "Stage 6 order" below | in a **new** connection `ssh <person>@<server>` works and `sudo -v` succeeds; only then `sudo sshd -T` shows `permitrootlogin no` and `passwordauthentication no` |
 | 7 | Services | a service user and a systemd unit with `User=` per service; code, config, secrets and data in separate places; ports bound to `127.0.0.1` unless the person asked otherwise; firewall: `ufw allow OpenSSH` **before** `ufw enable`; backups with a restore test | the process owner is not root: `ps -o user= -p "$(systemctl show -p MainPID --value <unit>)"`; `ss -tulpn` shows only intended public ports; a new ssh connection still works after the firewall is on; one restore was actually performed |
 | 8 | Deploy | `templates/deploy.sh`: versions folder, `current` link, restart, health check, rollback; a `FREEZE` stop file | a deliberately broken version is rolled back by the script |
@@ -130,6 +132,28 @@ On the server:
 - leftovers: failed units, dead containers, duplicate folders, old archives.
 
 If you cannot check something, list it as "not checked" with the reason.
+
+How to look, concretely:
+
+- **Secrets among tracked files and in history.** Print file names and the kind of key, never
+  the value:
+  `git grep -lIE 'sk-[A-Za-z0-9_-]{20}|ghp_[A-Za-z0-9]{30}|github_pat_|glpat-|AIza[0-9A-Za-z_-]{30}|xox[bap]-|-----BEGIN [A-Z ]*PRIVATE KEY'`
+  and the same pattern over history with `git log -p --all -G '<pattern>' --format='%h %s' --name-only`.
+  A pattern search misses keys of unknown shape; say so in the report. If the person agrees to
+  install a scanner such as gitleaks, use it as well.
+- **Share of commits with a task number:**
+  `git log -200 --format=%s | grep -cE '\(#[0-9]+\)$'` out of 200.
+- **Unmerged branches by age:**
+  `git for-each-ref --sort=committerdate --format='%(committerdate:short) %(refname:short)' refs/heads refs/remotes`
+  and `git branch -a --no-merged main`.
+- **Commands that need administrator rights on the server** (`sudo sshd -T`, reading other
+  users' `authorized_keys`, `sudo ufw status`): you write the command and say what to look for,
+  the person runs it in their own terminal and pastes the output. You do not ask for the sudo
+  password and you do not log in as root to save time.
+- **Agents other than Claude Code:** the instruction file is `AGENTS.md`, the git hooks and the
+  whole server part apply unchanged. `templates/claude-settings.json` and
+  `templates/claude-hooks/` are Claude Code specific: skip them and say that this layer is
+  missing.
 
 ### B2. Report
 

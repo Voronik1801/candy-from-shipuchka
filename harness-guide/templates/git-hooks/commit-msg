@@ -1,29 +1,36 @@
 #!/bin/sh
-# Хук git: проверяет подпись коммита.
-# Требует номер задачи вида (#123) в первой строке.
-# Если ветка названа <владелец>/<номер>-<описание>, номер в подписи должен совпасть с номером ветки.
+# Git hook: checks the commit title.
+# Required form:  type(scope): description (#123)
+#   type is one of feat, fix, docs, refactor, chore; (scope) is optional;
+#   the task number must be a real one, so (#0) is rejected.
+# If the branch is named <owner>/<number>-<slug> (or <number>-<slug>), the number
+# in the title must match the number in the branch name.
 #
-# Включение в клоне:  git config core.hooksPath .githooks
-# Это страховка от промаха, а не граница безопасности: флаг --no-verify её отключает.
+# Turn on in a clone:  git config core.hooksPath .githooks
+# The file must be executable (chmod +x), otherwise git silently skips it.
+# This guards against a slip, it is not a security boundary: --no-verify turns it off.
 
 first_line=$(head -n1 "$1")
 
-# Служебные коммиты слияния и исправления пропускаем.
+# Titles that git writes itself are let through.
 case "$first_line" in
-  Merge*|fixup!*|squash!*) exit 0 ;;
+  "Merge branch "*|"Merge remote-tracking branch "*|"Merge pull request "*|"Merge tag "*) exit 0 ;;
+  "Revert \""*|fixup!*|squash!*|amend!*) exit 0 ;;
 esac
 
-msg_num=$(printf '%s' "$first_line" | sed -n 's/.*(#\([0-9][0-9]*\)).*/\1/p')
-if [ -z "$msg_num" ]; then
-  echo "В заголовке коммита нет номера задачи. Формат: тип(область): описание (#123)" >&2
+if ! printf '%s' "$first_line" | grep -Eq '^(feat|fix|docs|refactor|chore)(\([^)]+\))?: .+ \(#[1-9][0-9]*\)$'; then
+  echo "Commit title does not match the form: type(scope): description (#123)" >&2
+  echo "Allowed types: feat, fix, docs, refactor, chore. The task number goes last." >&2
   exit 1
 fi
 
-branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-branch_num=$(printf '%s' "$branch" | sed -n 's|^[^/]*/\([0-9][0-9]*\)-.*|\1|p')
+msg_num=$(printf '%s' "$first_line" | sed -n 's/.*(#\([0-9][0-9]*\))$/\1/p')
+branch=$(git symbolic-ref --short -q HEAD 2>/dev/null)
+# the last path part of the branch name, if it starts with a number: anna/12-fix, 12-fix, a/b/12-fix
+branch_num=$(printf '%s' "${branch##*/}" | sed -n 's/^\([0-9][0-9]*\)-.*/\1/p')
 
 if [ -n "$branch_num" ] && [ "$branch_num" != "$msg_num" ]; then
-  echo "Ветка $branch относится к задаче #$branch_num, а в коммите указана #$msg_num." >&2
+  echo "Branch $branch belongs to task #$branch_num, but the commit names #$msg_num." >&2
   exit 1
 fi
 

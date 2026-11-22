@@ -1,15 +1,18 @@
 #!/bin/sh
-# Хук git: останавливает отправку в main и master.
-# git передаёт на стандартный вход строки вида:
-#   <локальная ссылка> <локальный коммит> <удалённая ссылка> <удалённый коммит>
+# Git hook: stops a push into main and master.
+# git feeds lines to stdin in the form:
+#   <local ref> <local commit> <remote ref> <remote commit>
 #
-# Включение в клоне:  git config core.hooksPath .githooks
-# Это страховка от промаха. Настоящий запрет - защита ветки на стороне GitHub.
+# Turn on in a clone:  git config core.hooksPath .githooks
+# The file must be executable (chmod +x), otherwise git silently skips it.
+# Enable it after the very first push of main: a new repository has to get its
+# main branch to the server once.
+# This guards against a slip. The real ban is branch protection on the hosting site.
 
 while read -r local_ref local_sha remote_ref remote_sha; do
   case "$remote_ref" in
     refs/heads/main|refs/heads/master)
-      echo "Отправка в ${remote_ref#refs/heads/} напрямую запрещена. Откройте запрос на слияние." >&2
+      echo "A direct push into ${remote_ref#refs/heads/} is not allowed. Open a merge request." >&2
       exit 1
       ;;
   esac

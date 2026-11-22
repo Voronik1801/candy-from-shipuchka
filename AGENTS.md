@@ -21,7 +21,8 @@ candy-from-shipuchka/
 ├── harness-guide/         ← guiding prompt + rules + templates for setting up an agent workplace
 │   ├── SKILL.md
 │   ├── rules/
-│   └── templates/
+│   ├── templates/
+│   └── tests/
 └── .github/workflows/     ← one workflow per tool, path-filtered
 ```
 
