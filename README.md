@@ -62,6 +62,19 @@ cd creative-wander && python3 wander.py 6 40 --root ~/notes
 A method plus the one script it needs. Works without any agent too — read the
 fragments yourself, that alone does most of the work.
 
+### 🍬 [harness-guide](harness-guide/)
+
+**Your agent will set up anything you ask for. The question is whether it sets it up right.**
+
+A guiding prompt with two modes: walk a person through the whole setup from
+scratch, or audit what already runs and fix it one finding at a time. Project
+rules, git workflow, secrets, server users and keys, deploy with rollback, an
+agent living on the server. Every stage ends with a check both of you looked
+at, not with the agent saying "done".
+
+Ships with the rule files and ready templates: agent settings, a hook that
+blocks commits to `main`, git hooks, a deploy script.
+
 ---
 
 ## Why the odd name

@@ -1,0 +1,30 @@
+#!/bin/sh
+# Хук git: проверяет подпись коммита.
+# Требует номер задачи вида (#123) в первой строке.
+# Если ветка названа <владелец>/<номер>-<описание>, номер в подписи должен совпасть с номером ветки.
+#
+# Включение в клоне:  git config core.hooksPath .githooks
+# Это страховка от промаха, а не граница безопасности: флаг --no-verify её отключает.
+
+first_line=$(head -n1 "$1")
+
+# Служебные коммиты слияния и исправления пропускаем.
+case "$first_line" in
+  Merge*|fixup!*|squash!*) exit 0 ;;
+esac
+
+msg_num=$(printf '%s' "$first_line" | sed -n 's/.*(#\([0-9][0-9]*\)).*/\1/p')
+if [ -z "$msg_num" ]; then
+  echo "В заголовке коммита нет номера задачи. Формат: тип(область): описание (#123)" >&2
+  exit 1
+fi
+
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+branch_num=$(printf '%s' "$branch" | sed -n 's|^[^/]*/\([0-9][0-9]*\)-.*|\1|p')
+
+if [ -n "$branch_num" ] && [ "$branch_num" != "$msg_num" ]; then
+  echo "Ветка $branch относится к задаче #$branch_num, а в коммите указана #$msg_num." >&2
+  exit 1
+fi
+
+exit 0

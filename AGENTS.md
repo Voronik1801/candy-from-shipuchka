@@ -18,6 +18,10 @@ candy-from-shipuchka/
 ├── creative-wander/       ← idea machine: random fragments → collisions → judges
 │   ├── SKILL.md
 │   └── wander.py
+├── harness-guide/         ← guiding prompt + rules + templates for setting up an agent workplace
+│   ├── SKILL.md
+│   ├── rules/
+│   └── templates/
 └── .github/workflows/     ← one workflow per tool, path-filtered
 ```
 

@@ -1,0 +1,34 @@
+name: harness-guide
+
+on:
+  push:
+    paths: ["harness-guide/**", ".github/workflows/harness-guide.yml"]
+  pull_request:
+    paths: ["harness-guide/**"]
+
+defaults:
+  run:
+    working-directory: harness-guide
+
+jobs:
+  templates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell templates parse
+        run: |
+          bash -n templates/deploy.sh
+          bash -n templates/claude-hooks/guard-main.sh
+          bash -n templates/git-hooks/commit-msg
+          bash -n templates/git-hooks/pre-push
+      - name: Settings template is valid JSON
+        run: python3 -m json.tool templates/claude-settings.json > /dev/null
+      - name: Guard hook blocks a commit on main
+        run: |
+          tmp="$(mktemp -d)" && cd "$tmp" && git init -q -b main .
+          git -c user.name=ci -c user.email=ci@example.invalid commit -q --allow-empty -m "init"
+          set +e
+          echo '{"tool_input":{"command":"git commit -m x"}}' | bash "$GITHUB_WORKSPACE/harness-guide/templates/claude-hooks/guard-main.sh"
+          code=$?
+          set -e
+          test "$code" -eq 2

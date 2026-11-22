@@ -1,0 +1,18 @@
+#!/bin/sh
+# Хук git: останавливает отправку в main и master.
+# git передаёт на стандартный вход строки вида:
+#   <локальная ссылка> <локальный коммит> <удалённая ссылка> <удалённый коммит>
+#
+# Включение в клоне:  git config core.hooksPath .githooks
+# Это страховка от промаха. Настоящий запрет - защита ветки на стороне GitHub.
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/master)
+      echo "Отправка в ${remote_ref#refs/heads/} напрямую запрещена. Откройте запрос на слияние." >&2
+      exit 1
+      ;;
+  esac
+done
+
+exit 0
